@@ -13,6 +13,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.cluster import KMeans
 from sklearn.model_selection import GridSearchCV
 
+import spotipy.util as util
+
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 features = [
     "mood",
@@ -92,17 +98,51 @@ def write_to_csv(data):
 
 
 def setup():
-    client_id = os.environ["SPOTIFY_CLIENT_ID"]
-    client_secret = os.environ["SPOTIFY_CLIENT_SECRET"]
+    client_id = os.getenv("SPOTIFY_CLIENT_ID")
+    client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
+
+    os.environ['SPOTIPY_CLIENT_ID'] = client_id
+    os.environ['SPOTIPY_CLIENT_SECRET'] = client_secret
+    os.environ['SPOTIPY_REDIRECT_URI'] = 'http://localhost:8888/callback'
     cc_manager = SpotifyClientCredentials(
         client_id=client_id, client_secret=client_secret
     )
-    return spotipy.Spotify(client_credentials_manager=cc_manager)
+
+    scope = 'user-top-read'
+
+    sp = spotipy.Spotify(client_credentials_manager=cc_manager)
+    username = "lithafnium"
+    token = util.prompt_for_user_token(username, scope)
+
+    if token:
+        sp = spotipy.Spotify(auth=token)
+    else:
+        print("Can't get token for", username)
+
+    return sp
+
+
+def get_top_tracks_features(sp, n):
+    results = sp.current_user_top_tracks(
+        limit=n, offset=0, time_range='medium_term')
+
+    data = []
+    for r in results["items"]:
+        track_id = r["id"]
+        track_features = sp.audio_features(track_id)
+        if track_features is not None and track_features[0] is not None:
+            filtered = filter_features(track_features[0], features)
+            filtered.append(track_id)
+            data.append(filtered)
+
+    return data
 
 
 def main():
     pp = pprint.PrettyPrinter(indent=4)
     sp = setup()
+    results = get_top_tracks_features(sp, 5)
+    pp.pprint(results)
     # get_tracks = sp.search("don't stop me now", limit=10)
     # pp.pprint(get_tracks)
     # get_track = sp.track("7hQJA50XrCWABAu5v6QZ4i")
